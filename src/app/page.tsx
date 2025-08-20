@@ -1,254 +1,226 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { Play, Pause, Volume2, VolumeX, Loader2 } from "lucide-react";
-
-// If you're using App Router, save this as `app/page.tsx`.
-// If using Pages Router, save as `pages/index.tsx`.
+import { Play, Pause, Volume2, VolumeX, Wifi, AlertCircle, Loader2 } from "lucide-react";
 
 export default function ComingSoon() {
-  /**
-   * ======== SETUP ========
-   * 1) Put the station logo file in `/public/mais-fm-logo.png`.
-   *    (You can use the image you sent here; just download and rename.)
-   * 2) Replace `streamUrl` with your real streaming URL (e.g., Icecast/Shoutcast).
-   */
-  const streamUrl = process.env.NEXT_PUBLIC_STREAM_URL || "https://example.com/stream.aac"; // TODO: replace with your stream URL
+  const streamUrl = "/api/radio";
+  const logoSrc = "/mais-fm-logo.png";
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const rafRef = useRef<number | null>(null);
-
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(0.9);
-  const [duration, setDuration] = useState(0); // for on-demand files; streams may report 0
-  const [currentTime, setCurrentTime] = useState(0);
+  const [volume, setVolume] = useState(0.8);
+  const [error, setError] = useState("");
 
-  const formattedTime = (sec: number) => {
-    if (!isFinite(sec) || sec < 0) return "--:--";
-    const m = Math.floor(sec / 60).toString().padStart(2, "0");
-    const s = Math.floor(sec % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
-  };
+  // Inicializa áudio
+  useEffect(() => {
+    const audio = new Audio();
+    audio.src = streamUrl;
+    audio.preload = "none";
+    audio.muted = true;
+    audioRef.current = audio;
 
-  // Play / Pause with error handling (autoplay restrictions etc.)
+    const handleError = () => {
+      setIsLoading(false);
+      setError("Erro ao conectar ao stream.");
+    };
+
+    audio.addEventListener("error", handleError);
+    return () => {
+      audio.removeEventListener("error", handleError);
+      audio.pause();
+    };
+  }, [streamUrl]);
+
   const togglePlay = async () => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-      return;
-    }
+
+    setIsLoading(true);
+    setError("");
+
     try {
-      setIsLoading(true);
-      await audio.play();
-      setIsPlaying(true);
-    } catch (e) {
-      console.error("Playback failed:", e);
+      if (isPlaying) {
+        audio.pause();
+        setIsPlaying(false);
+      } else {
+        await audio.play();
+        audio.muted = isMuted;
+        setIsPlaying(true);
+      }
+    } catch (err) {
+      console.warn("Autoplay bloqueado.");
+      setError("Clique novamente para ativar o som.");
+      audio.muted = false;
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleVolume = (v: number) => {
-    const audio = audioRef.current;
     const clamped = Math.min(1, Math.max(0, v));
     setVolume(clamped);
-    if (audio) audio.volume = clamped;
-    if (clamped === 0 && !isMuted) setIsMuted(true);
-    if (clamped > 0 && isMuted) setIsMuted(false);
+    if (audioRef.current) {
+      audioRef.current.volume = clamped;
+    }
+    if (clamped === 0) {
+      setIsMuted(true);
+      if (audioRef.current) audioRef.current.muted = true;
+    } else {
+      setIsMuted(false);
+      if (audioRef.current) audioRef.current.muted = false;
+    }
   };
 
   const toggleMute = () => {
-    const audio = audioRef.current;
-    setIsMuted((prev) => {
-      const next = !prev;
-      if (audio) audio.muted = next;
-      return next;
-    });
-  };
-
-  // Progress updater (useful for files; harmless for live streams)
-  const step = () => {
-    const audio = audioRef.current;
-    if (audio) {
-      setCurrentTime(audio.currentTime || 0);
+    setIsMuted((prev) => !prev);
+    if (audioRef.current) {
+      audioRef.current.muted = !isMuted;
     }
-    rafRef.current = requestAnimationFrame(step);
   };
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const onLoadedMeta = () => setDuration(audio.duration || 0);
-    const onTime = () => setCurrentTime(audio.currentTime || 0);
-    const onEnded = () => setIsPlaying(false);
-    const onWaiting = () => setIsLoading(true);
-    const onPlaying = () => setIsLoading(false);
-    const onError = (e: Event) => {
-      console.error("Audio error:", e);
-      setIsLoading(false);
-    };
-
-    audio.addEventListener("loadedmetadata", onLoadedMeta);
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("ended", onEnded);
-    audio.addEventListener("waiting", onWaiting);
-    audio.addEventListener("playing", onPlaying);
-    audio.addEventListener("error", onError);
-
-    rafRef.current = requestAnimationFrame(step);
-
-    return () => {
-      audio.removeEventListener("loadedmetadata", onLoadedMeta);
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("ended", onEnded);
-      audio.removeEventListener("waiting", onWaiting);
-      audio.removeEventListener("playing", onPlaying);
-      audio.removeEventListener("error", onError);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  // Ensure element exists & keep settings in sync
-  useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.volume = volume;
-    audioRef.current.muted = isMuted;
-  }, [volume, isMuted]);
-
-  // Progress percentage (for VOD; stream often 0)
-  const progress = useMemo(() => {
-    if (!duration || !isFinite(duration)) return 0;
-    return Math.min(100, Math.max(0, (currentTime / duration) * 100));
-  }, [currentTime, duration]);
 
   return (
-    <main className="min-h-screen w-full bg-gradient-to-br from-fuchsia-600 via-purple-700 to-violet-800 text-white flex items-center justify-center p-4">
-      <div className="max-w-3xl w-full">
-        {/* Card */}
+    <>
+      {/* Reset de estilos globais para evitar bordas e espaços */}
+      <style jsx global>{`
+        html,
+        body,
+        #__next {
+          margin: 0;
+          padding: 0;
+          height: 100%;
+          overflow-x: hidden;
+          scroll-behavior: smooth;
+        }
+
+        body {
+          background: linear-gradient(135deg, #0c4a6e, #0891b2, #047857);
+          background-attachment: fixed;
+          min-height: 100vh;
+        }
+
+        /* Evita faixa preta no final */
+        html {
+          height: 100%;
+          overflow-y: auto;
+        }
+
+        /* Remove margem inferior do scrollbar */
+        .scrollbar-hide::-webkit-scrollbar {
+          width: 0;
+        }
+      `}</style>
+
+      <main className="min-h-screen w-full flex items-center justify-center p-4 relative">
+        {/* Fundo com gradient e blobs */}
+        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-blue-900 via-cyan-900 to-teal-800"></div>
+        <div className="absolute inset-0 -z-10 opacity-30">
+          <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full blur-3xl bg-blue-400"></div>
+          <div className="absolute -bottom-40 -right-32 h-96 w-96 rounded-full blur-3xl bg-teal-400"></div>
+        </div>
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="bg-white/10 backdrop-blur-xl rounded-2xl shadow-2xl p-6 sm:p-10 border border-white/15"
+          className="max-w-3xl w-full mx-auto"
         >
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="relative h-28 w-28 shrink-0">
-              <Image
-                src="/mais-fm-logo.png"
-                alt="Mais FM 104.9 Logo"
-                fill
-                className="object-contain drop-shadow-md"
-                priority
-              />
+          <div className="bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-5 sm:p-8 border border-white/20">
+            <div className="flex flex-col sm:flex-row items-center gap-5">
+              <div className="relative h-24 w-24">
+                <Image
+                  src={logoSrc}
+                  alt="Mais FM 104.9 Logo"
+                  fill
+                  className="object-contain"
+                  priority
+                />
+              </div>
+              <div className="text-center sm:text-left flex-1">
+                <h1 className="text-2xl sm:text-3xl font-bold">Breve novo site da Mais FM 104.9</h1>
+                <p className="text-white/80 mt-2 text-sm">
+                  Uma nova experiência está chegando. Enquanto isso, ouça a melhor programação de Quixeramobim.
+                </p>
+              </div>
             </div>
-            <div className="flex-1 text-center sm:text-left">
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Em breve: novo site da Mais FM 104.9</h1>
-              <p className="text-white/80 mt-2">
-                Estamos preparando uma experiência moderna para você. Enquanto isso, ouça a nossa programação ao vivo no player abaixo.
-              </p>
-            </div>
-          </div>
 
-          {/* Player */}
-          <div className="mt-8">
-            <div className="bg-black/30 rounded-2xl p-5 border border-white/10">
-              <div className="flex items-center gap-4">
-                {/* Play/Pause */}
+            <div className="mt-7">
+              <div className="bg-black/20 rounded-2xl p-5 border border-white/15">
+                <div className="flex items-center gap-2 text-cyan-200 text-sm mb-4 justify-center sm:justify-start">
+                  <Wifi className="h-4 w-4 animate-pulse" />
+                  <span className="font-medium">AO VIVO</span>
+                </div>
+
                 <button
-                  aria-label={isPlaying ? "Pausar" : "Reproduzir"}
                   onClick={togglePlay}
-                  className="h-14 w-14 rounded-full bg-white text-purple-700 grid place-content-center disabled:opacity-50"
                   disabled={isLoading}
+                  className="w-full sm:w-auto sm:px-6 py-3 bg-gradient-to-r from-coral-500 to-orange-500 hover:from-coral-400 hover:to-orange-400 disabled:opacity-70 rounded-xl flex items-center justify-center gap-3 text-white font-semibold shadow-lg transition-all transform hover:scale-105 active:scale-95 mb-5"
                 >
                   {isLoading ? (
-                    <Loader2 className="h-7 w-7 animate-spin" />
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Conectando...
+                    </>
                   ) : isPlaying ? (
-                    <Pause className="h-7 w-7" />
+                    <>
+                      <Pause className="h-5 w-5" />
+                      Pausar
+                    </>
                   ) : (
-                    <Play className="h-7 w-7 translate-x-[1px]" />
+                    <>
+                      <Play className="h-5 w-5 ml-[1px]" />
+                      Reproduzir
+                    </>
                   )}
                 </button>
 
-                {/* Track info (editable) */}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm uppercase tracking-widest text-white/70">Ao vivo</p>
-                  <p className="truncate text-lg font-semibold">Mais FM 104.9 • Quixadá, CE</p>
+                {error && (
+                  <div className="flex items-center gap-2 text-yellow-200 bg-yellow-500/20 px-4 py-2 rounded-lg text-xs mb-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="text-center sm:text-left text-xs text-white/70 space-y-1">
+                  <p><strong>Estação:</strong> Mais FM 104.9 • Quixeramobim, CE</p>
                 </div>
 
-                {/* Volume */}
-                <div className="flex items-center gap-3 w-40">
+                <div className="mt-6 flex items-center gap-3">
                   <button
-                    aria-label={isMuted ? "Ativar som" : "Silenciar"}
                     onClick={toggleMute}
-                    className="p-2 rounded-full bg-white/10 hover:bg-white/20"
+                    className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition"
                   >
                     {isMuted || volume === 0 ? (
-                      <VolumeX className="h-5 w-5" />
+                      <VolumeX className="h-4 w-4" />
                     ) : (
-                      <Volume2 className="h-5 w-5" />
+                      <Volume2 className="h-4 w-4" />
                     )}
                   </button>
                   <input
                     type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
+                    min="0"
+                    max="1"
+                    step="0.01"
                     value={isMuted ? 0 : volume}
                     onChange={(e) => handleVolume(parseFloat(e.target.value))}
-                    className="w-full accent-white"
+                    className="flex-1 h-1 accent-orange-400"
                   />
                 </div>
               </div>
+            </div>
 
-              {/* Progress */}
-              <div className="mt-5">
-                <div className="flex justify-between text-xs text-white/70 mb-1">
-                  <span>{formattedTime(currentTime)}</span>
-                  <span>{duration ? formattedTime(duration) : "AO VIVO"}</span>
-                </div>
-                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white/80 transition-all"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Hidden native audio element */}
-              <audio
-                ref={audioRef}
-                src={streamUrl}
-                preload="none"
-                crossOrigin="anonymous"
-              />
+            <div className="mt-6 text-center text-xs text-white/60">
+              © {new Date().getFullYear()} Mais FM 104.9 • Todos os direitos reservados.
+              <br />
+              Streaming via RadioCaster
             </div>
           </div>
-
-          {/* Footer */}
-          <div className="mt-8 text-center text-sm text-white/70">
-            © {new Date().getFullYear()} Mais FM 104.9 – Todos os direitos reservados.
-          </div>
         </motion.div>
-      </div>
-
-      {/* Background deco blobs */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 0.25 }}
-        transition={{ duration: 1.2 }}
-        className="pointer-events-none absolute inset-0 -z-10"
-      >
-        <div className="absolute -top-20 -left-20 h-72 w-72 rounded-full blur-3xl bg-fuchsia-400/40" />
-        <div className="absolute -bottom-24 -right-16 h-80 w-80 rounded-full blur-3xl bg-cyan-400/40" />
-      </motion.div>
-    </main>
+      </main>
+    </>
   );
 }
