@@ -7,7 +7,7 @@ import { Play, Pause, Volume2, VolumeX, Wifi, AlertCircle, Loader2 } from "lucid
 
 export default function ComingSoon() {
   const streamUrl = "https://server14.srvsh.com.br:7638/stream"; // URL corrigida (sem espaço)
-  const logoSrc = "/mais-fm-logo.png";
+  const logoSrc = "/logo_oficial.png";
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
