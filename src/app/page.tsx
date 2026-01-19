@@ -268,10 +268,6 @@ export default function ComingSoon() {
   const logoSrc = "/logo_oficial.png";
   const twitchChannel = "maisfm104";
 
-  // ⚠️ ⚠️ ⚠️ IMPORTANTE: Substitua "seu-dominio.com" pelo seu domínio REAL (ex: maisfm104.com.br)
-  // O Twitch exige que este domínio esteja cadastrado em: https://dev.twitch.tv/console/apps
-  const twitchParentDomain = "seu-dominio.com"; // ← ALTERE ISSO ANTES DE PUBLICAR!
-
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [activeTab, setActiveTab] = useState<"radio" | "tv">("radio");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -331,6 +327,56 @@ export default function ComingSoon() {
       audio.pause();
     };
   }, [streamUrl, activeTab]);
+
+  // Carrega o player do Twitch quando a aba "tv" é selecionada
+  useEffect(() => {
+    if (activeTab !== "tv") return;
+
+    // Verifica se o script já foi carregado
+    if ((window as any).Twitch && (window as any).Twitch.Player) {
+      initializeTwitchPlayer();
+      return;
+    }
+
+    // Cria e carrega o script do Twitch
+    const script = document.createElement("script");
+    script.src = "https://player.twitch.tv/js/embed/v1.js";
+    script.async = true;
+    script.onload = () => {
+      initializeTwitchPlayer();
+    };
+    script.onerror = () => {
+      console.error("Falha ao carregar o script do Twitch Player");
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      // Opcional: remover o script (não é necessário, mas evita duplicação)
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, [activeTab]);
+
+  const initializeTwitchPlayer = () => {
+    const container = document.getElementById("twitch-embed");
+    if (!container) return;
+
+    // Limpa conteúdo anterior (caso já exista um player)
+    container.innerHTML = "";
+
+    try {
+      new (window as any).Twitch.Player(container, {
+        channel: twitchChannel,
+        width: "100%",
+        height: "100%",
+        autoplay: true,
+        muted: false,
+      });
+    } catch (err) {
+      console.error("Erro ao inicializar o Twitch Player:", err);
+    }
+  };
 
   const handleVolume = (v: number) => {
     const clamped = Math.min(1, Math.max(0, v));
@@ -519,19 +565,14 @@ export default function ComingSoon() {
                 </div>
               </>
             ) : (
-              // ✅ Embed CORRIGIDO do Twitch
+              // ✅ Container do Twitch Player (interativo)
               <div className="flex flex-col items-center">
                 <h2 className="text-white font-bold mb-4">Transmissão ao Vivo</h2>
-                <div className="w-full max-w-[620px] aspect-video bg-black rounded-lg overflow-hidden border border-white/20">
-                  <iframe
-                    src={`https://player.twitch.tv/?channel=${twitchChannel}&parent=${twitchParentDomain}`}
-                    height="100%"
-                    width="100%"
-                    frameBorder="0"
-                    allowFullScreen
-                    title="Mais FM 104.9 TV"
-                  ></iframe>
-                </div>
+                <div
+                  id="twitch-embed"
+                  className="w-full max-w-[620px] aspect-video bg-black rounded-lg overflow-hidden border border-white/20"
+                  style={{ minHeight: "378px" }}
+                ></div>
                 <p className="text-white/80 text-xs mt-3">
                   Assista à programação da Mais FM 104.9 em tempo real.
                 </p>
