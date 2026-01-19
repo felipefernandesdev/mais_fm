@@ -263,6 +263,12 @@ import {
   Tv,
 } from "lucide-react";
 
+interface TwitchWindow extends Window {
+  Twitch?: {
+    Player: new (container: HTMLElement, options: Record<string, unknown>) => void;
+  };
+}
+
 export default function ComingSoon() {
   const streamUrl = "https://server14.srvsh.com.br:7638/stream";
   const logoSrc = "/logo_oficial.png";
@@ -333,7 +339,7 @@ export default function ComingSoon() {
     if (activeTab !== "tv") return;
 
     // Verifica se o script já foi carregado
-    if ((window as any).Twitch && (window as any).Twitch.Player) {
+    if ((window as TwitchWindow).Twitch?.Player) {
       initializeTwitchPlayer();
       return;
     }
@@ -343,7 +349,9 @@ export default function ComingSoon() {
     script.src = "https://player.twitch.tv/js/embed/v1.js";
     script.async = true;
     script.onload = () => {
-      initializeTwitchPlayer();
+      if ((window as TwitchWindow).Twitch?.Player) {
+        initializeTwitchPlayer();
+      }
     };
     script.onerror = () => {
       console.error("Falha ao carregar o script do Twitch Player");
@@ -366,13 +374,16 @@ export default function ComingSoon() {
     container.innerHTML = "";
 
     try {
-      new (window as any).Twitch.Player(container, {
-        channel: twitchChannel,
-        width: "100%",
-        height: "100%",
-        autoplay: true,
-        muted: false,
-      });
+      const twitchWindow = window as TwitchWindow;
+      if (twitchWindow.Twitch?.Player) {
+        new twitchWindow.Twitch.Player(container, {
+          channel: twitchChannel,
+          width: "100%",
+          height: "100%",
+          autoplay: true,
+          muted: false,
+        });
+      }
     } catch (err) {
       console.error("Erro ao inicializar o Twitch Player:", err);
     }
